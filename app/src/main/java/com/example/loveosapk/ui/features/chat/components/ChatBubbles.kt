@@ -47,7 +47,8 @@ fun PremiumMessageBubble(
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
         Column(
             modifier = Modifier
-                .widthIn(max = 280.dp)
+                .fillMaxWidth(0.82f)
+                .widthIn(max = 340.dp)
                 .background(bubbleBackground, bubbleShape)
                 .padding(12.dp)
         ) {

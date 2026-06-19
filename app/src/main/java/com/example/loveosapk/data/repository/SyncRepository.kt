@@ -361,7 +361,33 @@ class SyncRepository(
             status = MessageStatus.SENT
         )
         dao.upsertChatMessage(msg.toEntity())
-        if (syncEnabled) awaitRemote { getPartnerRef()?.child("chat")?.child(msg.id)?.setValue(msg)?.await() }
+        if (syncEnabled) {
+            try {
+                val delivered = msg.copy(status = MessageStatus.DELIVERED)
+                awaitRemote { getPartnerRef()?.child("chat")?.child(msg.id)?.setValue(delivered)?.await() }
+                dao.upsertChatMessage(delivered.toEntity())
+            } catch (e: Exception) {
+                Log.e("SYNC_REPOSITORY", "Failed to sync chat message ${msg.id}", e)
+            }
+        }
+    }
+
+    suspend fun markChatMessagesRead(messages: List<ChatMessage>) {
+        if (messages.isEmpty()) return
+        val currentRole = appState.first().myRole
+        messages
+            .filter { it.sender != currentRole && it.status != MessageStatus.READ }
+            .forEach { message ->
+                val readMessage = message.copy(status = MessageStatus.READ)
+                dao.upsertChatMessage(readMessage.toEntity())
+                if (syncEnabled) {
+                    try {
+                        awaitRemote { getPartnerRef()?.child("chat")?.child(message.id)?.setValue(readMessage)?.await() }
+                    } catch (e: Exception) {
+                        Log.e("SYNC_REPOSITORY", "Failed to mark chat message ${message.id} as read", e)
+                    }
+                }
+            }
     }
 
     suspend fun sendHeart() {

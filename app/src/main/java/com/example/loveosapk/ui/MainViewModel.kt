@@ -89,6 +89,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun markChatMessagesRead(messages: List<com.example.loveosapk.data.ChatMessage>) {
+        viewModelScope.launch {
+            repository.markChatMessagesRead(messages)
+        }
+    }
+
     fun uploadAndSendPhoto(uri: Uri) {
         viewModelScope.launch {
             _isUploading.value = true

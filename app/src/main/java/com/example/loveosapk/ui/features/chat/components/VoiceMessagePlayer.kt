@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.media3.common.Player
 
 @Composable
 fun VoiceMessagePlayer(
@@ -38,6 +39,19 @@ fun VoiceMessagePlayer(
     val waveformHeights = remember(url) { List(15) { (10..24).random().dp } }
 
     DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    isPlaying = false
+                    exoPlayer.seekTo(0)
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlayerPlaying: Boolean) {
+                isPlaying = isPlayerPlaying
+            }
+        }
+        exoPlayer.addListener(listener)
         onDispose { exoPlayer.release() }
     }
 
