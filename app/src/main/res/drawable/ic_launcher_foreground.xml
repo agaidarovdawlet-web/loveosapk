@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Heart Shape -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,80 C54,80 20,60 20,40 C20,25 35,20 45,25 C48,27 52,32 54,35 C56,32 60,27 63,25 C73,20 88,25 88,40 C88,60 54,80 54,80 Z" />
+    <!-- White border for "Premium" look -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M54,85 C54,85 15,62 15,40 C15,22 35,15 47,22 C51,24 53,28 54,30 C55,28 57,24 61,22 C73,15 93,22 93,40 C93,62 54,85 54,85 Z" />
+</vector>

@@ -1,0 +1,49 @@
+build:
+  maxIssues: 0
+
+complexity:
+  LargeClass:
+    active: true
+    threshold: 220
+  LongMethod:
+    active: true
+    threshold: 70
+  TooManyFunctions:
+    active: true
+    thresholdInClasses: 20
+  ComplexMethod:
+    active: true
+    threshold: 12
+
+exceptions:
+  SwallowedException:
+    active: true
+  TooGenericExceptionCaught:
+    active: true
+    excludes:
+      - "**/data/repository/**"
+      - "**/data/remote/**"
+
+style:
+  MagicNumber:
+    active: true
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    excludes:
+      - "**/ui/theme/**"
+      - "**/ui/components/**"
+  ForbiddenComment:
+    active: true
+    values:
+      - TODO:
+      - FIXME:
+  MaxLineLength:
+    active: true
+    maxLineLength: 140
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    active: true
+  UnreachableCode:
+    active: true
+

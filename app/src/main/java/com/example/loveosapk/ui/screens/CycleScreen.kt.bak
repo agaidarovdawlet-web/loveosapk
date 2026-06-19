@@ -1,0 +1,369 @@
+package com.example.loveosapk.ui.screens
+
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items as lazyItems
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.loveosapk.ui.MainViewModel
+import com.example.loveosapk.ui.components.AtmosphericBackground
+import com.example.loveosapk.ui.components.GlassCard
+import com.example.loveosapk.ui.components.RomanticButton
+import com.example.loveosapk.ui.components.bounceClickable
+import com.example.loveosapk.ui.theme.Accent
+import com.example.loveosapk.ui.theme.AccentSecondary
+import java.time.LocalDate
+import java.time.YearMonth
+import java.time.format.TextStyle
+import java.time.temporal.ChronoUnit
+import java.util.*
+
+@Composable
+fun CycleScreen(viewModel: MainViewModel) {
+    val appState by viewModel.appState.collectAsState()
+    val latestPeriod by viewModel.latestPeriod.collectAsState()
+    val dayDataMap by viewModel.days.collectAsState()
+    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
+    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    
+    val cycleLength = 28
+    val periodLength = 5
+    val lastPeriodStr = latestPeriod ?: appState.startDate.takeIf { it.isNotEmpty() } ?: "2026-05-15"
+
+    AtmosphericBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            CalendarHeader(currentMonth) { currentMonth = it }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            AnimatedContent(
+                targetState = currentMonth,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        slideInHorizontally { it } + fadeIn() togetherWith 
+                        slideOutHorizontally { -it } + fadeOut()
+                    } else {
+                        slideInHorizontally { -it } + fadeIn() togetherWith 
+                        slideOutHorizontally { it } + fadeOut()
+                    }
+                },
+                label = "monthChange"
+            ) { month ->
+                CalendarGrid(month, lastPeriodStr, cycleLength, periodLength, selectedDate) { selectedDate = it }
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            
+            DayDetailsSection(selectedDate, dayDataMap[selectedDate.toString()], onUpdate = { s, n -> viewModel.updateDayData(selectedDate.toString(), s, n) })
+
+            Spacer(Modifier.height(24.dp))
+
+            PhaseCard(lastPeriodStr, cycleLength, periodLength)
+            
+            Spacer(Modifier.height(16.dp))
+            
+            PredictionCard(lastPeriodStr, cycleLength)
+            
+            Spacer(Modifier.height(16.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                StatSquare("${calculateCycleDay(lastPeriodStr, cycleLength)}", "день", Modifier.weight(1f))
+                StatSquare("${calculateDaysUntilNext(lastPeriodStr, cycleLength)}", "до срока", Modifier.weight(1f))
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            
+            RomanticButton(
+                onClick = { viewModel.markPeriodToday() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("🩸 Месячные сегодня", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+            
+            Spacer(Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+fun PhaseCard(lastPeriodStr: String, cLen: Int, pLen: Int) {
+    val cd = calculateCycleDay(lastPeriodStr, cLen)
+    val phase = when {
+        cd <= pLen -> "🩸 Менструация"
+        cd in 13..15 -> "🥚 Овуляция"
+        cd > 15 -> "🌕 Лютеиновая"
+        else -> "🌿 Фолликулярная"
+    }
+    
+    val phaseColor = when {
+        cd <= pLen -> Color(0xFFE91E63)
+        cd in 13..15 -> Color(0xFF4CAF50)
+        else -> Color(0xFF9C27B0)
+    }
+
+    GlassCard {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(phase, fontWeight = FontWeight.Bold, color = phaseColor, fontSize = 20.sp)
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { ((cd - 1).coerceAtLeast(0).toFloat() / cLen).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(12.dp),
+                color = phaseColor,
+                trackColor = Color.White.copy(alpha = 0.1f),
+                strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
+            )
+        }
+    }
+}
+
+@Composable
+fun PredictionCard(lastPeriodStr: String, cLen: Int) {
+    val lastPeriod = LocalDate.parse(lastPeriodStr)
+    val nextPeriod = lastPeriod.plusDays(cLen.toLong())
+    val ovulation = lastPeriod.plusDays(14)
+    
+    GlassCard {
+        Column(Modifier.fillMaxWidth()) {
+            Text("🔮 ПРОГНОЗ", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                "Следующие: ${nextPeriod.dayOfMonth} ${nextPeriod.month.getDisplayName(TextStyle.FULL, Locale("ru"))}", 
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "Овуляция: ${ovulation.dayOfMonth} ${ovulation.month.getDisplayName(TextStyle.FULL, Locale("ru"))}", 
+                fontSize = 13.sp, 
+                color = Color(0xFF4CAF50)
+            )
+        }
+    }
+}
+
+fun calculateCycleDay(lastPeriodStr: String, cLen: Int): Int {
+    return try {
+        val lastPeriod = LocalDate.parse(lastPeriodStr)
+        val today = LocalDate.now()
+        val diff = ChronoUnit.DAYS.between(lastPeriod, today)
+        if (diff < 0) return 1
+        ((diff % cLen).toInt() + 1)
+    } catch (e: Exception) {
+        1
+    }
+}
+
+fun calculateDaysUntilNext(lastPeriodStr: String, cLen: Int): Int {
+    val cd = calculateCycleDay(lastPeriodStr, cLen)
+    return cLen - cd + 1
+}
+
+@Composable
+fun CalendarHeader(month: YearMonth, onMonthChange: (YearMonth) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = { onMonthChange(month.minusMonths(1)) }) {
+            Icon(Icons.Default.ChevronLeft, "Prev", tint = Color.White)
+        }
+        Text(
+            text = "${month.month.getDisplayName(TextStyle.FULL, Locale("ru"))} ${month.year}".uppercase(),
+            fontWeight = FontWeight.Black,
+            fontSize = 16.sp,
+            color = Color.White,
+            letterSpacing = 2.sp
+        )
+        IconButton(onClick = { onMonthChange(month.plusMonths(1)) }) {
+            Icon(Icons.Default.ChevronRight, "Next", tint = Color.White)
+        }
+    }
+}
+
+@Composable
+fun DayDetailsSection(date: LocalDate, data: com.example.loveosapk.data.DayData?, onUpdate: (List<String>, String) -> Unit) {
+    val symptoms = listOf("🤒 Боль", "😴 Усталость", "😠 Раздражение", "😊 Радость", "🍕 Аппетит")
+    var selectedSymptoms by remember(date, data) { mutableStateOf(data?.symptoms ?: emptyList()) }
+    var note by remember(date, data) { mutableStateOf(data?.note ?: "") }
+
+    GlassCard {
+        Column(Modifier.fillMaxWidth()) {
+            Text("Детали: ${date.dayOfMonth} ${date.month.getDisplayName(TextStyle.FULL, Locale("ru"))}", fontWeight = FontWeight.Bold, color = Color.White)
+            Spacer(Modifier.height(12.dp))
+            
+            Text("Симптомы", fontSize = 12.sp, color = Color.White.copy(alpha = 0.6f))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(vertical = 8.dp)) {
+                lazyItems(symptoms) { s ->
+                    val isSelected = s in selectedSymptoms
+                    Box(
+                        modifier = Modifier
+                            .background(if (isSelected) Accent.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+                            .clickable {
+                                val newList = if (isSelected) selectedSymptoms - s else selectedSymptoms + s
+                                selectedSymptoms = newList
+                                onUpdate(newList, note)
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(s, fontSize = 12.sp, color = if (isSelected) Color.White else Color.White.copy(alpha = 0.8f))
+                    }
+                }
+            }
+            
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = note,
+                onValueChange = { 
+                    note = it
+                    onUpdate(selectedSymptoms, it)
+                },
+                placeholder = { Text("Заметка на сегодня...") },
+                modifier = Modifier.fillMaxWidth(),
+                textStyle = LocalTextStyle.current.copy(fontSize = 14.sp),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent
+                )
+            )
+        }
+    }
+}
+
+@Composable
+fun CalendarGrid(month: YearMonth, lastPeriodStr: String, cLen: Int, pLen: Int, selectedDate: LocalDate, onDateSelect: (LocalDate) -> Unit) {
+    val firstDay = month.atDay(1)
+    val lastDay = month.atEndOfMonth()
+    val startPadding = (firstDay.dayOfWeek.value - 1) % 7
+    val days = (1..lastDay.dayOfMonth).toList()
+    val lastPeriod = LocalDate.parse(lastPeriodStr)
+
+    Column {
+        Row(Modifier.fillMaxWidth()) {
+            listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс").forEach {
+                Text(it, modifier = Modifier.weight(1f), fontSize = 12.sp, color = Color.White.copy(alpha = 0.4f), style = MaterialTheme.typography.labelSmall, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
+        
+        Spacer(Modifier.height(12.dp))
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(7),
+            modifier = Modifier.height(280.dp),
+            userScrollEnabled = false
+        ) {
+            gridItems(List(startPadding) { -1 } + days) { day ->
+                if (day != -1) {
+                    val date = month.atDay(day)
+                    val diff = ChronoUnit.DAYS.between(lastPeriod, date)
+                    val cycleDay = (((diff % cLen) + cLen) % cLen)
+                    
+                    val isPeriod = diff >= 0 && cycleDay < pLen
+                    val isOvulation = cycleDay == 14L
+                    val isToday = date == LocalDate.now()
+                    val isSelected = date == selectedDate
+
+                    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                    val pulseScale by infiniteTransition.animateFloat(
+                        initialValue = 1f,
+                        targetValue = if (isToday) 1.1f else 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(1000),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "scale"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .padding(4.dp)
+                            .graphicsLayer {
+                                scaleX = pulseScale
+                                scaleY = pulseScale
+                            }
+                            .background(
+                                color = when {
+                                    isSelected -> Accent.copy(alpha = 0.4f)
+                                    isPeriod -> Color(0xFFE91E63).copy(alpha = 0.2f)
+                                    isToday -> Color.White.copy(alpha = 0.1f)
+                                    else -> Color.Transparent
+                                },
+                                shape = CircleShape
+                            )
+                            .border(
+                                width = if (isSelected) 2.dp else if (isToday) 1.dp else 0.dp,
+                                color = if (isSelected) Accent else if (isToday) Color.White.copy(alpha = 0.5f) else Color.Transparent,
+                                shape = CircleShape
+                            )
+                            .clickable { onDateSelect(date) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "$day",
+                                color = if (isPeriod) Color(0xFFE91E63) else Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = if (isSelected || isToday) FontWeight.Bold else FontWeight.Normal
+                            )
+                            if (isOvulation) {
+                                Box(Modifier.size(4.dp).background(Color(0xFF4CAF50), CircleShape))
+                            } else if (isPeriod) {
+                                Box(Modifier.size(4.dp).background(Color(0xFFE91E63), CircleShape))
+                            }
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.aspectRatio(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatSquare(value: String, label: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(24.dp))
+            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+            .padding(16.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.White)
+            Text(label.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.4f), letterSpacing = 1.sp)
+        }
+    }
+}

@@ -1,0 +1,39 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "loveos_shared": {
+      "pairs": {
+        "$pairCode": {
+          ".read": "auth != null && $pairCode.matches(/^[A-Za-z0-9_-]{4,64}$/)",
+          ".write": "auth != null && $pairCode.matches(/^[A-Za-z0-9_-]{4,64}$/)",
+          "profiles": {
+            "$role": {
+              ".validate": "$role === 'me' || $role === 'partner'"
+            }
+          },
+          "wishes": {
+            "$id": {
+              ".validate": "newData.hasChildren(['id', 'text', 'category', 'ts']) && newData.child('id').val() === $id"
+            }
+          },
+          "tasks": {
+            "$id": {
+              ".validate": "newData.hasChildren(['id', 'text', 'owner', 'ts']) && newData.child('id').val() === $id"
+            }
+          },
+          "notes": {
+            "$id": {
+              ".validate": "newData.hasChildren(['id', 'text', 'date', 'author', 'ts']) && newData.child('id').val() === $id"
+            }
+          },
+          "cycle_logs": {
+            "$date": {
+              ".validate": "$date.matches(/^\\d{4}-\\d{2}-\\d{2}$/)"
+            }
+          }
+        }
+      }
+    }
+  }
+}
