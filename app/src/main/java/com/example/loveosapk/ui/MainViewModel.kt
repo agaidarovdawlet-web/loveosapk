@@ -6,11 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.loveosapk.data.AppState
 import com.example.loveosapk.data.PreferenceManager
 import com.example.loveosapk.data.local.LoveOsDatabase
-import com.example.loveosapk.data.local.CycleLogEntity
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import com.example.loveosapk.data.repository.SyncRepository
-import com.example.loveosapk.data.repository.CycleRepositoryImpl
 import com.example.loveosapk.data.remote.MediaStorage
 import com.example.loveosapk.data.sync.ImageCompressor
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,7 +26,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val database = LoveOsDatabase.getDatabase(application)
     val preferenceManager = PreferenceManager(application)
     val repository = SyncRepository(application, database.dao(), database.cycleDao(), preferenceManager)
-    val cycleRepository = CycleRepositoryImpl(database.cycleDao(), preferenceManager)
     private val mediaStorage = MediaStorage()
     private val imageCompressor = ImageCompressor(application)
 
@@ -79,19 +74,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = emptyList()
     )
 
-    val days = repository.days.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = emptyMap()
-    )
-
     val incomingHearts = repository.incomingHearts
-
-    val latestPeriod = repository.periods.map { it.lastOrNull() }.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = null
-    )
 
     fun sendChatMessage(
         text: String,
@@ -247,43 +230,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.sendHeart() }
     }
 
-    fun markPeriodToday() {
-        viewModelScope.launch {
-            cycleRepository.saveLog(com.example.loveosapk.domain.model.CycleLog(
-                date = java.time.LocalDate.now(),
-                isPeriod = true,
-                flowIntensity = 0,
-                symptoms = emptyList(),
-                mood = null,
-                painLevel = 0,
-                energyLevel = 5,
-                notes = "",
-                isOvulation = false
-            ))
-        }
-    }
-
-    fun updateDayData(date: String, symptoms: List<String>, note: String) {
-        viewModelScope.launch {
-            val localDate = java.time.LocalDate.parse(date)
-            val current = cycleRepository.getLogForDate(localDate).first() ?: com.example.loveosapk.domain.model.CycleLog(
-                date = localDate,
-                isPeriod = false,
-                flowIntensity = 0,
-                symptoms = emptyList(),
-                mood = null,
-                painLevel = 0,
-                energyLevel = 5,
-                notes = note,
-                isOvulation = false
-            )
-            cycleRepository.saveLog(current.copy(
-                symptoms = try { symptoms.map { com.example.loveosapk.domain.model.Symptom.valueOf(it) } } catch (e: Exception) { emptyList() },
-                notes = note
-            ))
-        }
-    }
-
     fun addNote(text: String) {
         viewModelScope.launch {
             repository.addNote(com.example.loveosapk.data.Note(
@@ -358,7 +304,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         repository.close()
-        cycleRepository.close()
         super.onCleared()
     }
 }

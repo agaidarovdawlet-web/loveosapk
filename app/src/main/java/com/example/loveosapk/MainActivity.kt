@@ -49,7 +49,7 @@ class MainActivity : ComponentActivity() {
             val appState by viewModel.appState.collectAsState()
             
             LoveOsApkTheme(appThemeSetting = appState.theme) {
-                MainApp(viewModel, appState)
+                MainApp(viewModel, appState, application)
             }
         }
     }
@@ -57,7 +57,11 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun MainApp(viewModel: MainViewModel, appState: com.example.loveosapk.data.AppState) {
+fun MainApp(
+    viewModel: MainViewModel,
+    appState: com.example.loveosapk.data.AppState,
+    application: android.app.Application
+) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -177,7 +181,7 @@ fun MainApp(viewModel: MainViewModel, appState: com.example.loveosapk.data.AppSt
                 }
                 composable(Screen.Cycle.route) { 
                     val cycleViewModel: CycleViewModel = viewModel(
-                        factory = CycleViewModel.Factory(viewModel)
+                        factory = CycleViewModel.Factory(application)
                     )
                     com.example.loveosapk.ui.features.cycle.CycleScreen(cycleViewModel)
                 }

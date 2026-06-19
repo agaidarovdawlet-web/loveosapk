@@ -1,8 +1,11 @@
 package com.example.loveosapk.ui.features.cycle
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.loveosapk.data.PreferenceManager
+import com.example.loveosapk.data.local.LoveOsDatabase
+import com.example.loveosapk.data.repository.CycleRepositoryImpl
 import com.example.loveosapk.domain.model.CycleLog
 import com.example.loveosapk.domain.repository.CycleRepository
 import com.example.loveosapk.domain.usecase.GetCycleMonthUseCase
@@ -14,7 +17,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import androidx.lifecycle.ViewModelProvider
 import com.example.loveosapk.domain.usecase.PredictCyclePhasesUseCase
-import com.example.loveosapk.ui.MainViewModel
+import java.io.Closeable
 import kotlinx.coroutines.CancellationException
 
 class CycleViewModel(
@@ -24,15 +27,17 @@ class CycleViewModel(
     private val preferenceManager: PreferenceManager
 ) : ViewModel() {
 
-    class Factory(private val mainViewModel: MainViewModel) : ViewModelProvider.Factory {
+    class Factory(private val application: Application) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            val repository = mainViewModel.cycleRepository
+            val database = LoveOsDatabase.getDatabase(application)
+            val preferenceManager = PreferenceManager(application)
+            val repository = CycleRepositoryImpl(database.cycleDao(), preferenceManager)
             val predictPhases = PredictCyclePhasesUseCase()
             val getCycleMonth = GetCycleMonthUseCase(repository, predictPhases)
             val saveLog = SaveCycleLogUseCase(repository)
             
-            return CycleViewModel(getCycleMonth, saveLog, repository, mainViewModel.preferenceManager) as T
+            return CycleViewModel(getCycleMonth, saveLog, repository, preferenceManager) as T
         }
     }
 
@@ -101,5 +106,10 @@ class CycleViewModel(
             repository.deleteLog(date)
             if (_selectedDate.value == date) _selectedDate.value = null
         }
+    }
+
+    override fun onCleared() {
+        (repository as? Closeable)?.close()
+        super.onCleared()
     }
 }
