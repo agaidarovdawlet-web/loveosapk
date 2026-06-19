@@ -5,15 +5,17 @@ import com.example.loveosapk.BuildConfig
 import com.example.loveosapk.data.PreferenceManager
 import com.example.loveosapk.data.local.CycleLogDao
 import com.example.loveosapk.data.local.CycleLogEntity
+import com.example.loveosapk.data.remote.FirebaseRemoteDataSource
 import com.example.loveosapk.domain.model.*
 import com.example.loveosapk.domain.repository.CycleRepository
+import com.example.loveosapk.domain.repository.RemoteDataSource
 import com.example.loveosapk.domain.usecase.PredictCyclePhasesUseCase
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.*
 import java.io.Closeable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -25,17 +27,15 @@ import java.time.LocalDate
 
 class CycleRepositoryImpl(
     private val dao: CycleLogDao,
-    private val preferenceManager: PreferenceManager
+    private val preferenceManager: PreferenceManager,
+    private val remoteDataSource: RemoteDataSource = FirebaseRemoteDataSource()
 ) : CycleRepository, Closeable {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val auth = FirebaseAuth.getInstance()
-    private val firebaseDb = FirebaseDatabase.getInstance(BuildConfig.FIREBASE_DATABASE_URL)
-    private val sharedRef = firebaseDb.getReference("loveos_shared")
     private val json = Json { ignoreUnknownKeys = true }
     private val predictor = PredictCyclePhasesUseCase()
-    private var cycleLogsRef: DatabaseReference? = null
-    private var cycleLogsListener: ChildEventListener? = null
+    private var cycleLogsJob: Job? = null
     
     private var syncEnabled = false
     private var myRole = "me"
@@ -76,7 +76,7 @@ class CycleRepositoryImpl(
         dao.upsertLog(mergedLog.toEntity())
         
         if (syncEnabled && partnerCode != null) {
-            syncToFirebase(mergedLog)
+            syncToRemote(mergedLog)
         }
     }
 
@@ -84,7 +84,7 @@ class CycleRepositoryImpl(
         dao.deleteLog(date.toString())
         if (syncEnabled && partnerCode != null) {
             withTimeout(15_000) {
-                getPartnerRef()?.child("cycle_logs")?.child(date.toString())?.removeValue()?.await()
+                remoteDataSource.updateChildren(cycleLogsPath(), mapOf(date.toString() to null)).getOrThrow()
             }
         }
     }
@@ -107,13 +107,11 @@ class CycleRepositoryImpl(
         )
     }
 
-    private suspend fun syncToFirebase(log: CycleLog) {
-        val partnerRef = getPartnerRef() ?: return
-        val node = partnerRef.child("cycle_logs").child(log.date.toString())
-        val firebaseModel = log.toFirebaseModel()
+    private suspend fun syncToRemote(log: CycleLog) {
+        val path = "${cycleLogsPath()}/${log.date}"
         withTimeout(15_000) {
             ensureSignedIn()
-            node.setValue(firebaseModel).await()
+            remoteDataSource.setValue(path, log.toFirebaseModel()).getOrThrow()
         }
     }
 
@@ -127,41 +125,27 @@ class CycleRepositoryImpl(
         isListenersSetup = true
         activePartnerCode = code
         
-        val ref = getPartnerRef()?.child("cycle_logs") ?: return
-        ref.keepSynced(true)
-        
-        scope.launch { pushLocalCycleSnapshot(ref) }
+        val path = cycleLogsPath()
+        scope.launch { pushLocalCycleSnapshot(path) }
 
-        val listener = object : ChildEventListener {
-            override fun onChildAdded(snapshot: DataSnapshot, prevKey: String?) {
-                syncFromFirebase(snapshot)
+        cycleLogsJob = remoteDataSource.observeValue(path, Map::class.java)
+            .onEach { result ->
+                result
+                    .onSuccess { value -> syncFromRemote(value) }
+                    .onFailure { error -> Log.e("CYCLE_REPOSITORY", "Cycle listener failed", error) }
             }
-            override fun onChildChanged(snapshot: DataSnapshot, prevKey: String?) {
-                syncFromFirebase(snapshot)
-            }
-            override fun onChildRemoved(snapshot: DataSnapshot) {
-                val date = snapshot.key ?: return
-                scope.launch {
-                    val existing = dao.getLogByDate(date).firstOrNull()?.toDomain()
-                    if (existing?.source != "me") {
-                        dao.deleteLog(date)
-                    }
-                }
-            }
-            override fun onCancelled(error: DatabaseError) {
-                Log.e("CYCLE_REPOSITORY", "Cycle listener cancelled: ${error.message}", error.toException())
-            }
-            override fun onChildMoved(snapshot: DataSnapshot, prevKey: String?) {}
-        }
-        ref.addChildEventListener(listener)
-        cycleLogsRef = ref
-        cycleLogsListener = listener
+            .launchIn(scope)
     }
 
-    private fun syncFromFirebase(snapshot: DataSnapshot) {
-        val date = snapshot.key ?: return
-        val map = snapshot.value as? Map<*, *> ?: return
-        
+    private fun syncFromRemote(logsByDate: Map<*, *>) {
+        logsByDate.forEach { (dateValue, logValue) ->
+            val date = dateValue as? String ?: return@forEach
+            val map = logValue as? Map<*, *> ?: return@forEach
+            syncRemoteLog(date, map)
+        }
+    }
+
+    private fun syncRemoteLog(date: String, map: Map<*, *>) {
         scope.launch {
             val remoteLog = CycleLog(
                 date = LocalDate.parse(date),
@@ -200,17 +184,17 @@ class CycleRepositoryImpl(
         return resolveConflict(existing, remote)
     }
 
-    private fun getPartnerRef(): DatabaseReference? {
-        val code = partnerCode ?: return null
-        return sharedRef.child("pairs").child(code)
+    private fun cycleLogsPath(): String {
+        val code = partnerCode ?: error("Partner code is required for cycle sync")
+        return "loveos_shared/pairs/$code/cycle_logs"
     }
 
-    private suspend fun pushLocalCycleSnapshot(ref: DatabaseReference) {
+    private suspend fun pushLocalCycleSnapshot(path: String) {
         dao.getAllLogs().first().forEach { entity ->
-            val remoteSnapshot = ref.child(entity.date).get().await()
-            val remoteTs = remoteSnapshot.child("timestamp").getValue(Long::class.java) ?: 0L
-            if (!remoteSnapshot.exists() || entity.timestamp >= remoteTs) {
-                ref.child(entity.date).setValue(entity.toDomain().toFirebaseModel()).await()
+            val remoteLog = remoteDataSource.getValueOnce("$path/${entity.date}", Map::class.java).getOrNull()
+            val remoteTs = remoteLog?.get("timestamp").asLong(0L)
+            if (remoteLog == null || entity.timestamp >= remoteTs) {
+                remoteDataSource.setValue("$path/${entity.date}", entity.toDomain().toFirebaseModel()).getOrThrow()
             }
         }
     }
@@ -280,13 +264,8 @@ class CycleRepositoryImpl(
     }
 
     private fun removeRealtimeListener() {
-        val ref = cycleLogsRef
-        val listener = cycleLogsListener
-        if (ref != null && listener != null) {
-            ref.removeEventListener(listener)
-        }
-        cycleLogsRef = null
-        cycleLogsListener = null
+        cycleLogsJob?.cancel()
+        cycleLogsJob = null
         isListenersSetup = false
         activePartnerCode = null
     }

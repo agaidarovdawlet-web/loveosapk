@@ -44,6 +44,7 @@ class CycleViewModel(
 
     private val appState = preferenceManager.appStateFlow
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<CycleUiState> = combine(
         _currentMonth,
         _selectedDate,
