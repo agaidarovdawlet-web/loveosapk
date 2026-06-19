@@ -27,3 +27,38 @@
 
 -keep class com.example.loveosapk.data.**$$serializer { *; }
 -keep class com.example.loveosapk.domain.model.**$$serializer { *; }
+
+# Room
+-keep class com.example.loveosapk.data.local.** { *; }
+-keep class * extends androidx.room.RoomDatabase
+-dontwarn androidx.room.paging.**
+
+# Firebase
+-keep class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.firebase.**
+-keepattributes Signature
+-keepattributes *Annotation*
+
+# DataStore / Preferences
+-keep class androidx.datastore.** { *; }
+-keep class com.example.loveosapk.data.PreferenceManager { *; }
+
+# Kotlin Coroutines / Flow
+-keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
+-keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
+-keepclassmembernames class kotlinx.** { volatile <fields>; }
+
+# Jetpack Compose
+-keep class androidx.compose.** { *; }
+-keep class com.example.loveosapk.ui.theme.** { *; }
+-keep class com.example.loveosapk.ui.components.** { *; }
+
+# Serializable / Parcelable
+-keepclassmembers class * implements android.os.Parcelable {
+    public static final android.os.Parcelable$Creator CREATOR;
+}
+-keepnames class * implements java.io.Serializable
+
+# Navigation
+-keep class com.example.loveosapk.ui.navigation.** { *; }
